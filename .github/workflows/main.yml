@@ -1,11 +1,15 @@
 name: CI devops 2025
 
+permissions:
+  contents: read
+
 "on":
   # Vérifier chaque commit envoyé sur les branches de travail du TP.
   push:
     branches: [main, develop]
   # Vérifier aussi les changements proposés avant leur fusion.
   pull_request:
+    branches: [main, develop]
 
 jobs:
   test-backend:
@@ -13,6 +17,8 @@ jobs:
     steps:
       # Récupérer les sources avant de lancer Maven.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # L'application est compilée avec Java 21 ; le cache accélère les exécutions suivantes.
       - name: Set up JDK 21
@@ -27,42 +33,21 @@ jobs:
       - name: Build and test with Maven
         run: mvn -B clean verify --file ./simple-api/pom.xml
 
-  build-and-push-docker-image:
-    # Ne construire les images que lorsque les tests du backend ont réussi.
-    needs: test-backend
-    runs-on: ubuntu-24.04
-    env:
-      # Les pull requests provenant d'un fork n'ont pas accès aux secrets.
-      IMAGE_NAMESPACE: ${{ secrets.DOCKERHUB_USERNAME || 'local' }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Les identifiants Docker Hub ne servent que pour une publication depuis main.
-      - name: Login to Docker Hub
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build image and push backend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./simple-api
-          tags: ${{ env.IMAGE_NAMESPACE }}/tp-devops-simple-api:latest
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-
-      - name: Build image and push database
-        uses: docker/build-push-action@v6
-        with:
-          context: ./database
-          tags: ${{ env.IMAGE_NAMESPACE }}/tp-devops-database:latest
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-
-      - name: Build image and push httpd
-        uses: docker/build-push-action@v6
-        with:
-          context: ./http-server
-          tags: ${{ env.IMAGE_NAMESPACE }}/tp-devops-httpd:latest
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      # Le statut de la Quality Gate fait échouer la CI et bloque la publication.
+      - name: Analyze with SonarCloud
+        if: github.event_name == 'push'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: EuropeanCeiling_tp-devops-correction-docker-samy
+          SONAR_ORGANIZATION: europeanceiling
+        run: |
+          if [[ -z "$SONAR_TOKEN" ]]; then
+            echo "Configure the SONAR_TOKEN secret in GitHub Actions." >&2
+            exit 1
+          fi
+          mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar \
+            -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
+            -Dsonar.organization="$SONAR_ORGANIZATION" \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.qualitygate.wait=true \
+            --file ./simple-api/pom.xml
