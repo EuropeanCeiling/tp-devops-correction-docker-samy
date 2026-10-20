@@ -7,7 +7,7 @@ spring:
             non_contextual_creation: true
     generate-ddl: false
   datasource:
-    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
-    url: jdbc:tc:postgresql://hostname/simple-api
-    username: ${embedded.postgresql.user}
-    password: ${embedded.postgresql.password}
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:simple-api;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
