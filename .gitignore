@@ -4,3 +4,5 @@ ansible/id_rsa
 ansible/id_rsa.pub
 **/target/
 *.class
+**/node_modules/
+**/dist/

@@ -20,7 +20,7 @@ Prérequis : Docker Desktop démarré. Depuis la racine du dépôt :
 docker compose up --build -d
 ```
 
-Le front est disponible sur `http://localhost:8080/`. L'API est accessible via le proxy, par exemple `http://localhost:8080/api/students` et `http://localhost:8080/api/departments`. Le port hôte peut être changé avec `HTTP_PORT` dans `.env`.
+Le front Vue fourni par [takima-training/devops-front](https://github.com/takima-training/devops-front) est compilé pendant la construction de l'image Apache. Il est disponible sur `http://localhost:8080/`. L'API est accessible sous `/api`, par exemple `http://localhost:8080/api/students` et `http://localhost:8080/api/departments`. Les appels du front sont relatifs à `/api`, ainsi le navigateur passe par Apache sur le même hôte et n'a pas besoin de CORS. Le port hôte peut être changé avec `HTTP_PORT` dans `.env`.
 Pour consulter l'état des services : `docker compose ps`.
 
 Définir `POSTGRES_PASSWORD` dans un fichier `.env` à la racine (ce fichier est ignoré par Git), puis démarrer la stack :
