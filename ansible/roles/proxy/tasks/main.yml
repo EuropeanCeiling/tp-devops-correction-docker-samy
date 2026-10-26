@@ -1,0 +1,16 @@
+---
+- name: Pull the front and proxy image from Docker Hub
+  community.docker.docker_image:
+    name: "{{ proxy_image }}"
+    source: pull
+
+- name: Launch the HTTP proxy
+  community.docker.docker_container:
+    name: httpd
+    image: "{{ proxy_image }}"
+    state: started
+    restart_policy: unless-stopped
+    networks:
+      - name: app-network
+    ports:
+      - "80:80"

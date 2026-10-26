@@ -1,0 +1,39 @@
+---
+- name: Create the deployment directory
+  ansible.builtin.file:
+    path: "{{ deployment_dir }}/database"
+    state: directory
+    mode: "0755"
+
+- name: Copy database initialization scripts
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../database/sql/"
+    dest: "{{ deployment_dir }}/database/"
+    mode: "0644"
+
+- name: Create the PostgreSQL data volume
+  community.docker.docker_volume:
+    name: postgres_data
+    state: present
+
+- name: Launch the PostgreSQL database
+  community.docker.docker_container:
+    name: database
+    image: postgres:17.2-alpine
+    pull: true
+    state: started
+    restart_policy: unless-stopped
+    networks:
+      - name: app-network
+    env:
+      POSTGRES_DB: db
+      POSTGRES_USER: usr
+      POSTGRES_PASSWORD: "{{ postgres_password }}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - "{{ deployment_dir }}/database:/docker-entrypoint-initdb.d:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usr -d db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

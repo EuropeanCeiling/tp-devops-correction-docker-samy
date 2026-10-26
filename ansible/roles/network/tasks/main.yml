@@ -1,0 +1,6 @@
+---
+- name: Create the application Docker network
+  community.docker.docker_network:
+    name: app-network
+    driver: bridge
+    state: present

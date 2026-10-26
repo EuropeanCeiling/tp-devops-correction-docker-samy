@@ -1,0 +1,25 @@
+---
+- name: Pull the API image from Docker Hub
+  community.docker.docker_image:
+    name: "{{ api_image }}"
+    source: pull
+
+- name: Wait for PostgreSQL to accept connections
+  community.docker.docker_container_info:
+    name: database
+  register: database_info
+  until: database_info.exists and database_info.container.State.Health.Status | default('') == 'healthy'
+  retries: 30
+  delay: 5
+
+- name: Launch the API
+  community.docker.docker_container:
+    name: backend
+    image: "{{ api_image }}"
+    state: started
+    restart_policy: unless-stopped
+    networks:
+      - name: app-network
+    env:
+      DATABASE_HOST: database
+      DATABASE_PASSWORD: "{{ postgres_password }}"

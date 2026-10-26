@@ -1,0 +1,19 @@
+---
+- name: Deploy the application stack
+  hosts: all
+  gather_facts: true
+  become: true
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    deployment_dir: /opt/student-api
+    postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') | mandatory }}"
+    api_image: "{{ lookup('env', 'API_IMAGE') | mandatory }}"
+    proxy_image: "{{ lookup('env', 'PROXY_IMAGE') | mandatory }}"
+
+  roles:
+    - docker
+    - network
+    - database
+    - app
+    - proxy

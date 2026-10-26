@@ -35,19 +35,70 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./simple-api
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-simple-api:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-simple-api:${{ github.event.workflow_run.head_sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-simple-api:latest
           push: true
 
       - name: Build image and push database
         uses: docker/build-push-action@v6
         with:
           context: ./database
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-database:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-database:${{ github.event.workflow_run.head_sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-database:latest
           push: true
 
       - name: Build image and push httpd
         uses: docker/build-push-action@v6
         with:
           context: ./http-server
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-httpd:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-httpd:${{ github.event.workflow_run.head_sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-httpd:latest
           push: true
+
+      - name: Prepare Ansible and SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_PRIVATE_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          case "$DEPLOY_HOST" in *[!A-Za-z0-9.-]*) echo 'Invalid DEPLOY_HOST' >&2; exit 1;; esac
+          case "$DEPLOY_USER" in *[!A-Za-z0-9_-]*) echo 'Invalid DEPLOY_USER' >&2; exit 1;; esac
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+          printf '[production]\n%s ansible_user=%s ansible_ssh_private_key_file=%s ansible_python_interpreter=/usr/bin/python3\n' \
+            "$DEPLOY_HOST" "$DEPLOY_USER" "$HOME/.ssh/deploy_key" > "$RUNNER_TEMP/hosts.ini"
+          python3 -m venv "$RUNNER_TEMP/ansible-venv"
+          "$RUNNER_TEMP/ansible-venv/bin/pip" install --quiet ansible
+          "$RUNNER_TEMP/ansible-venv/bin/ansible-galaxy" collection install -r ansible/requirements.yml
+
+      - name: Deploy the published images
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          API_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-simple-api:${{ github.event.workflow_run.head_sha }}
+          PROXY_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/tp-devops-httpd:${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -eu
+          test -n "$POSTGRES_PASSWORD"
+          "$RUNNER_TEMP/ansible-venv/bin/ansible-playbook" \
+            -i "$RUNNER_TEMP/hosts.ini" \
+            ansible/playbook.yml
+
+      - name: Verify the front and API are responding
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          set -eu
+          curl --fail --retry 10 --retry-delay 5 "http://${DEPLOY_HOST}/"
+          curl --fail --retry 10 --retry-delay 5 "http://${DEPLOY_HOST}/api/students"
