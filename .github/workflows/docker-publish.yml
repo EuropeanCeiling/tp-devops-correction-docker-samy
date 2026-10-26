@@ -74,9 +74,23 @@ jobs:
           case "$DEPLOY_USER" in *[!A-Za-z0-9_-]*) echo 'Invalid DEPLOY_USER' >&2; exit 1;; esac
           mkdir -p "$HOME/.ssh"
           chmod 700 "$HOME/.ssh"
-          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          # Accept both multiline secrets and secrets pasted with literal `\n`.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          key = os.environ["DEPLOY_SSH_PRIVATE_KEY"]
+          if "\\n" in key and "\n" not in key:
+              key = key.replace("\\n", "\n")
+          key = key.replace("\r", "").strip() + "\n"
+          Path(os.path.expanduser("~/.ssh/deploy_key")).write_text(key)
+          PY
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+          if ! ssh-keygen -y -P '' -f "$HOME/.ssh/deploy_key" >/dev/null 2>&1; then
+            echo 'DEPLOY_SSH_PRIVATE_KEY is not a readable, unencrypted OpenSSH private key. Check the GitHub secret formatting and key type.' >&2
+            exit 1
+          fi
           printf '[production]\n%s ansible_user=%s ansible_ssh_private_key_file=%s ansible_python_interpreter=/usr/bin/python3\n' \
             "$DEPLOY_HOST" "$DEPLOY_USER" "$HOME/.ssh/deploy_key" > "$RUNNER_TEMP/hosts.ini"
           python3 -m venv "$RUNNER_TEMP/ansible-venv"
